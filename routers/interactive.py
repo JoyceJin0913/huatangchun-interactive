@@ -58,8 +58,10 @@ async def generate_plot(req: GenerateRequest):
 
     raw = raw.strip()
     if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-        raw = raw.rsplit("```", 1)[0]
+        parts = raw.split("\n", 1)
+        if len(parts) > 1:
+            raw = parts[1].rsplit("```", 1)[0]
+        # else: malformed fence, leave raw unchanged — json.loads will raise the proper 500 below
 
     try:
         result = json.loads(raw)
@@ -69,16 +71,38 @@ async def generate_plot(req: GenerateRequest):
     if not isinstance(result, dict):
         raise HTTPException(status_code=500, detail="AI 返回结构错误: 期望 JSON 对象")
 
-    # Update intimacy in DB
-    current_intimacy = dict(req.intimacy)
+    # Re-open connection to read authoritative intimacy and write updates
+    conn = get_db()
+
+    # Read authoritative intimacy from DB (not client-sent req.intimacy)
+    room_row = conn.execute(
+        "SELECT intimacy_json, unlocked_plots_json FROM rooms WHERE room_id = ?",
+        (req.room_id,),
+    ).fetchone()
+    if not room_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="房间不存在")
+
+    current_intimacy = json.loads(room_row["intimacy_json"])
+    current_unlocked = json.loads(room_row["unlocked_plots_json"])
+
+    # Apply intimacy deltas (clamped to [0, 100])
     for char_id, delta in result.get("intimacy_delta", {}).items():
         current_intimacy[char_id] = min(100, max(0, current_intimacy.get(char_id, 50) + delta))
 
-    # Record message and update room
-    conn = get_db()
+    # Track newly unlocked plot node
+    next_node_id = result.get("next_node", {}).get("node_id")
+    if next_node_id and next_node_id not in current_unlocked:
+        current_unlocked.append(next_node_id)
+
+    # Persist updates
     conn.execute(
-        "UPDATE rooms SET intimacy_json = ? WHERE room_id = ?",
-        (json.dumps(current_intimacy, ensure_ascii=False), req.room_id),
+        "UPDATE rooms SET intimacy_json = ?, unlocked_plots_json = ? WHERE room_id = ?",
+        (
+            json.dumps(current_intimacy, ensure_ascii=False),
+            json.dumps(current_unlocked, ensure_ascii=False),
+            req.room_id,
+        ),
     )
     conn.execute(
         "INSERT INTO messages (room_id, role, content, node_id) VALUES (?, ?, ?, ?)",
@@ -86,7 +110,7 @@ async def generate_plot(req: GenerateRequest):
             req.room_id,
             "assistant",
             result.get("plot_html", ""),
-            result.get("next_node", {}).get("node_id"),
+            next_node_id,
         ),
     )
     conn.commit()
