@@ -30,10 +30,19 @@ async def settle_room(req: SettleRequest):
         conn.close()
         raise HTTPException(status_code=404, detail="房间不存在")
 
+    # Idempotency: prevent re-settling an already-settled room
+    if row["status"] == "settled":
+        conn.close()
+        raise HTTPException(status_code=409, detail="房间已结算")
+
     # Step 2: Parse all three JSON fields
-    intimacy = json.loads(row["intimacy_json"])
-    choices = json.loads(row["choices_json"])
-    unlocked_plots = json.loads(row["unlocked_plots_json"])
+    try:
+        intimacy = json.loads(row["intimacy_json"])
+        choices = json.loads(row["choices_json"])
+        unlocked_plots = json.loads(row["unlocked_plots_json"])
+    except json.JSONDecodeError:
+        conn.close()
+        raise HTTPException(status_code=500, detail="房间数据格式损坏")
 
     # Step 3: Count total_interactions from messages table
     count_row = conn.execute(
@@ -65,7 +74,7 @@ async def settle_room(req: SettleRequest):
     if raw.startswith("```"):
         parts = raw.split("\n", 1)
         if len(parts) > 1:
-            raw = parts[1].rsplit("```", 1)[0]
+            raw = parts[1].rsplit("```", 1)[0].strip()
 
     # Step 8: Parse JSON
     try:
@@ -73,14 +82,19 @@ async def settle_room(req: SettleRequest):
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=500, detail=f"AI 返回格式错误: {e}")
 
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=500, detail="AI 返回结构错误: 期望 JSON 对象")
+
     # Step 9 & 10: Update room status and commit
     conn = get_db()
-    conn.execute(
-        "UPDATE rooms SET status = 'settled' WHERE room_id = ?",
-        (req.room_id,),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute(
+            "UPDATE rooms SET status = 'settled' WHERE room_id = ?",
+            (req.room_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Step 11: Return response
     return {

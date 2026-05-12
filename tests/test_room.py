@@ -18,8 +18,8 @@ MOCK_SETTLE_RESPONSE = json.dumps({
         "top_character": "裴琰",
         "best_choice": "欣然应允收养裴琰",
         "keyword": "最温柔的守护者",
-        "total_interactions": 12,
-        "unlocked_plots": 3,
+        "total_interactions": 5,  # matches 5 seeded messages
+        "unlocked_plots": 1,
     },
 })
 
@@ -69,7 +69,8 @@ def test_settle_returns_ending_and_report():
     assert "ending_text" in data
     assert "relationship_graph" in data
     assert "highlight_report" in data
-    assert data["ending_type"] in ("perfect", "regret", "hidden")
+    # With peiyan=80 peirong=75 seeded data, ending_type is deterministically "perfect"
+    assert data["ending_type"] == "perfect"
     assert "top_character" in data["highlight_report"]
 
 
