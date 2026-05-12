@@ -32,6 +32,7 @@ def build_user_prompt(
     )
     intimacy_text = "、".join(f"{k}亲密度{v}" for k, v in intimacy.items())
 
+    # 注意：next_node 不含 options 字段，single_choice 的选项由调用方从 DEMO_ACTS 静态数据中注入
     return f"""当前状态：
 - 第 {act_id} 幕
 - 角色列表：

@@ -13,6 +13,7 @@ def determine_ending_type(intimacy: dict) -> str:
         return "perfect"
     if peirong < 40 or peiyan < 40:
         return "regret"
+    # 中间段亲密度（40–69）也归为遗憾结局，无需单独结局分支
     return "regret"
 
 def build_system_prompt() -> str:

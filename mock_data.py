@@ -8,7 +8,7 @@ DEMO_CHARACTERS = [
         "role": "protagonist",
         "personality": ["温和隐忍", "善良心软", "重亲情"],
         "skills": ["枣花糕", "针线活", "倾听"],
-        "initial_intimacy": 50,
+        "initial_intimacy": 50,  # 主角自身，不计入亲密度追踪
     },
     {
         "id": "peirong",
@@ -24,7 +24,7 @@ DEMO_CHARACTERS = [
         "role": "prince",
         "personality": ["早熟隐忍", "知恩图报", "察言观色"],
         "skills": ["揣摩人心", "乖巧懂事"],
-        "initial_intimacy": 40,
+        "initial_intimacy": 50,
     },
     {
         "id": "peiyu",

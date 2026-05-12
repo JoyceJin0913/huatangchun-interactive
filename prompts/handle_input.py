@@ -35,7 +35,6 @@ def build_system_prompt(character_id: str) -> str:
 
 def build_user_prompt(
     user_input: str,
-    user_character_id: str,
     node_prompt: str,
     intimacy: dict,
     history_summary: str,
@@ -54,7 +53,7 @@ def build_user_prompt(
   "character_reply": "对方角色的回应（古言风格，≤100字）",
   "intimacy_delta": {{"角色id": 变化值（-20到+20的整数）}},
   "next_node": {{
-    "node_id": "下一节点id或null",
+    "node_id": null,
     "type": "cutscene 或 free_input 或 single_choice"
   }}
 }}"""
