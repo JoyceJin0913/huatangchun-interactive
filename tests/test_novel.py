@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 from main import app
+from database import get_db
 
 client = TestClient(app)
 
@@ -59,10 +60,12 @@ def test_novel_parse_saves_to_db():
             "/novel/parse",
             json={"novel_id": "test_novel_save_001", "content": "测试内容"},
         )
-        assert response.status_code == 200
-        # 再次请求相同 novel_id，确认 INSERT OR REPLACE 不报错
-        response2 = client.post(
-            "/novel/parse",
-            json={"novel_id": "test_novel_save_001", "content": "不同内容"},
-        )
-    assert response2.status_code == 200
+    assert response.status_code == 200
+    # Verify data was actually written to DB
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM novels WHERE novel_id = ?", ("test_novel_save_001",)
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert json.loads(row["characters_json"])[0]["id"] == "wentang"
