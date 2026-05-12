@@ -14,6 +14,21 @@ CHARACTER_PERSONALITIES = {
         "style": "乖巧小心翼翼，偶尔磕巴，语气依赖温棠",
         "forbidden": ["傲慢", "强势", "无视温棠"],
     },
+    "peiyu": {
+        "name": "裴瑜",
+        "style": "骄纵傲慢，语气强势，惯用命令口吻，偶尔撒娇争宠",
+        "forbidden": ["谦逊低调", "主动退让", "对温棠示好"],
+    },
+    "empress": {
+        "name": "沈皇后",
+        "style": "端庄威严，措辞考究，话里藏刀，带隐隐压迫感",
+        "forbidden": ["失态慌乱", "直白示弱", "过分亲切"],
+    },
+    "chen": {
+        "name": "陈嬷嬷",
+        "style": "忠厚圆滑，语气亲切，善用宫廷俗语，处事老练不慌乱",
+        "forbidden": ["傲慢失礼", "逾越本分", "莽撞行事"],
+    },
 }
 
 def build_system_prompt(character_id: str) -> str:

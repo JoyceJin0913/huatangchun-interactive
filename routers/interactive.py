@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from ai_client import call_deepseek
 from database import get_db
+from mock_data import DEMO_ACTS
 from prompts.generate_plot import build_system_prompt, build_user_prompt
 from prompts.handle_input import build_system_prompt as input_system_prompt
 from prompts.handle_input import build_user_prompt as input_user_prompt
@@ -18,6 +19,7 @@ class GenerateRequest(BaseModel):
     last_choice: Optional[dict] = None
     intimacy: dict
     unlocked_plots: list[str] = []
+    user_character_id: str = "wentang"
 
 
 @router.post("/generate")
@@ -55,6 +57,7 @@ async def generate_plot(req: GenerateRequest):
         intimacy=req.intimacy,
         unlocked_plots=req.unlocked_plots,
         history_summary=history_summary,
+        user_character_id=req.user_character_id,
     )
     raw = call_deepseek(system_prompt=system_prompt, user_prompt=user_prompt)
 
@@ -119,13 +122,46 @@ async def generate_plot(req: GenerateRequest):
     conn.commit()
     conn.close()
 
+    # Inject options for single_choice nodes from DEMO_ACTS static data
+    injected_node = result.get("next_node")
+    if isinstance(injected_node, dict) and injected_node.get("type") == "single_choice":
+        node_id = injected_node.get("node_id")
+        matched_options = None
+
+        # First try exact node_id match
+        for act in DEMO_ACTS:
+            for node in act.get("nodes", []):
+                if node["node_id"] == node_id:
+                    # Prefer per-character options if available
+                    options_by_char = node.get("options_by_char", {})
+                    matched_options = options_by_char.get(req.user_character_id) or node.get("options", [])
+                    break
+            if matched_options is not None:
+                break
+
+        # Fallback: match by act_id — use first single_choice node in that act
+        if matched_options is None:
+            for act in DEMO_ACTS:
+                if act.get("act_id") == req.act_id:
+                    for node in act.get("nodes", []):
+                        if node.get("type") == "single_choice":
+                            options_by_char = node.get("options_by_char", {})
+                            matched_options = options_by_char.get(req.user_character_id) or node.get("options", [])
+                            # Also align node_id so front-end tracking is consistent
+                            injected_node["node_id"] = node["node_id"]
+                            break
+                    break
+
+        if matched_options:
+            injected_node["options"] = matched_options
+
     return result
 
 
 class InputRequest(BaseModel):
     room_id: str
     user_character_id: str
-    node_id: str
+    node_id: Optional[str] = None
     user_input: str
 
 

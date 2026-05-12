@@ -47,6 +47,7 @@ DEMO_ACTS = [
                 "type": "single_choice",
                 "trigger": "裴容询问后",
                 "prompt": "裴容放下书卷，沉声道：「朕问你，想不想抚育三皇子琰儿？」",
+                # 兼容旧逻辑的默认选项（温棠视角）
                 "options": [
                     {
                         "id": "A",
@@ -64,6 +65,43 @@ DEMO_ACTS = [
                         "intimacy_delta": {"peirong": -5, "peiyu": 5},
                     },
                 ],
+                # 按角色区分的选项
+                "options_by_char": {
+                    "wentang": [
+                        {
+                            "id": "A",
+                            "text": "欣然应允：「臣妾愿悉心照料琰儿，视若己出」",
+                            "intimacy_delta": {"peiyan": 15, "peirong": 10},
+                        },
+                        {
+                            "id": "B",
+                            "text": "犹豫试探：「陛下，琰儿乃皇子，臣妾恐难当此任……」",
+                            "intimacy_delta": {"peiyan": 5, "peirong": 5},
+                        },
+                        {
+                            "id": "C",
+                            "text": "婉言拒绝：「臣妾只想盼着瑜儿有朝一日回心转意」",
+                            "intimacy_delta": {"peirong": -5, "peiyu": 5},
+                        },
+                    ],
+                    "peiyan": [
+                        {
+                            "id": "A",
+                            "text": "默然观察：我只需看清父皇此举究竟是试探还是安排",
+                            "intimacy_delta": {"wentang": 0, "peirong": 5},
+                        },
+                        {
+                            "id": "B",
+                            "text": "乖巧应声：「儿臣谢父皇，定不叫娘娘为难」",
+                            "intimacy_delta": {"wentang": 10, "peirong": 8},
+                        },
+                        {
+                            "id": "C",
+                            "text": "试探温棠：悄悄退后半步，等着看她是欢喜还是为难",
+                            "intimacy_delta": {"wentang": 5, "peirong": 3},
+                        },
+                    ],
+                },
             },
             {
                 "node_id": "act1_node2",
@@ -84,6 +122,7 @@ DEMO_ACTS = [
                 "type": "single_choice",
                 "trigger": "裴琰入宫后",
                 "prompt": "裴琰站在门口，你想先做什么？",
+                # 默认选项（温棠视角）
                 "options": [
                     {
                         "id": "A",
@@ -96,6 +135,43 @@ DEMO_ACTS = [
                         "intimacy_delta": {"peiyan": 15},
                     },
                 ],
+                # 按角色区分的选项
+                "options_by_char": {
+                    "wentang": [
+                        {
+                            "id": "A",
+                            "text": "亲手做枣花糕：将热腾腾的糕点摆在他面前",
+                            "intimacy_delta": {"peiyan": 20},
+                        },
+                        {
+                            "id": "B",
+                            "text": "取针线缝补冬衣：让他知道这里有人在乎他",
+                            "intimacy_delta": {"peiyan": 15},
+                        },
+                        {
+                            "id": "C",
+                            "text": "问他爱吃什么：先了解他，再慢慢走近",
+                            "intimacy_delta": {"peiyan": 10, "peirong": 3},
+                        },
+                    ],
+                    "peiyan": [
+                        {
+                            "id": "A",
+                            "text": "主动搭手帮忙：「我来帮娘娘，娘娘别累着」",
+                            "intimacy_delta": {"wentang": 18},
+                        },
+                        {
+                            "id": "B",
+                            "text": "安静坐在一旁看她做事，记住她的每一个习惯",
+                            "intimacy_delta": {"wentang": 12},
+                        },
+                        {
+                            "id": "C",
+                            "text": "故意打翻东西，看她如何应对——是恼还是疼",
+                            "intimacy_delta": {"wentang": 8},
+                        },
+                    ],
+                },
             }
         ],
     },
