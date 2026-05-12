@@ -1,0 +1,6 @@
+.env
+novel.db
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
