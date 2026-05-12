@@ -32,8 +32,8 @@ def setup_db(tmp_path, monkeypatch):
         (DEMO_NOVEL_ID, json.dumps(DEMO_CHARACTERS), json.dumps(DEMO_ACTS)),
     )
     conn.execute(
-        "INSERT INTO rooms (room_id, novel_id, intimacy_json, choices_json) VALUES (?, ?, ?, ?)",
-        (DEMO_ROOM_ID, DEMO_NOVEL_ID, json.dumps(DEMO_INITIAL_INTIMACY), "[]"),
+        "INSERT INTO rooms (room_id, novel_id, intimacy_json, unlocked_plots_json, choices_json) VALUES (?, ?, ?, ?, ?)",
+        (DEMO_ROOM_ID, DEMO_NOVEL_ID, json.dumps(DEMO_INITIAL_INTIMACY), "[]", "[]"),
     )
     conn.commit()
     conn.close()
@@ -124,9 +124,35 @@ def test_input_saves_to_messages():
             },
         )
     conn = get_db()
-    count = conn.execute(
+    user_count = conn.execute(
         "SELECT COUNT(*) as cnt FROM messages WHERE room_id = ? AND role = 'user'",
         (DEMO_ROOM_ID,),
     ).fetchone()["cnt"]
+    asst_count = conn.execute(
+        "SELECT COUNT(*) as cnt FROM messages WHERE room_id = ? AND role = 'assistant'",
+        (DEMO_ROOM_ID,),
+    ).fetchone()["cnt"]
     conn.close()
-    assert count >= 1
+    assert user_count >= 1
+    assert asst_count >= 1
+
+
+def test_input_updates_intimacy_in_db():
+    with patch("routers.interactive.call_deepseek", return_value=MOCK_INPUT_RESPONSE):
+        client.post(
+            "/interactive/input",
+            json={
+                "room_id": DEMO_ROOM_ID,
+                "user_character_id": "wentang",
+                "node_id": "act1_node2",
+                "user_input": "琰儿，你想吃枣花糕吗？",
+            },
+        )
+    conn = get_db()
+    row = conn.execute(
+        "SELECT intimacy_json FROM rooms WHERE room_id = ?", (DEMO_ROOM_ID,)
+    ).fetchone()
+    conn.close()
+    intimacy = json.loads(row["intimacy_json"])
+    # peiyan should go from 50 + 12 = 62 (MOCK_INPUT_RESPONSE intimacy_delta)
+    assert intimacy["peiyan"] == 62

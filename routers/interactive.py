@@ -5,6 +5,8 @@ from pydantic import BaseModel
 from ai_client import call_deepseek
 from database import get_db
 from prompts.generate_plot import build_system_prompt, build_user_prompt
+from prompts.handle_input import build_system_prompt as input_system_prompt
+from prompts.handle_input import build_user_prompt as input_user_prompt
 
 router = APIRouter(prefix="/interactive", tags=["interactive"])
 
@@ -119,10 +121,6 @@ async def generate_plot(req: GenerateRequest):
     return result
 
 
-from prompts.handle_input import build_system_prompt as input_system_prompt
-from prompts.handle_input import build_user_prompt as input_user_prompt
-
-
 class InputRequest(BaseModel):
     room_id: str
     user_character_id: str
@@ -199,6 +197,9 @@ async def handle_input(req: InputRequest):
         "SELECT intimacy_json, unlocked_plots_json FROM rooms WHERE room_id = ?",
         (req.room_id,),
     ).fetchone()
+    if not fresh_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="房间不存在")
     current_intimacy = json.loads(fresh_row["intimacy_json"])
     current_unlocked = json.loads(fresh_row["unlocked_plots_json"])
 
