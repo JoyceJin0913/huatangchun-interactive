@@ -28,6 +28,7 @@ def init_db():
             intimacy_json        TEXT NOT NULL,
             choices_json         TEXT NOT NULL DEFAULT '[]',
             unlocked_plots_json  TEXT NOT NULL DEFAULT '[]',
+            flags_json           TEXT NOT NULL DEFAULT '[]',
             status               TEXT NOT NULL DEFAULT 'active',
             created_at           DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -43,4 +44,12 @@ def init_db():
         );
     """)
     conn.commit()
+
+    # 兼容已有数据库：若 flags_json 列不存在则添加
+    try:
+        conn.execute("ALTER TABLE rooms ADD COLUMN flags_json TEXT NOT NULL DEFAULT '[]'")
+        conn.commit()
+    except Exception:
+        pass  # 列已存在，忽略
+
     conn.close()

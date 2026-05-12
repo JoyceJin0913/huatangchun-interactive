@@ -46,6 +46,12 @@ async def generate_plot(req: GenerateRequest):
     ).fetchall()
     history_summary = " | ".join(row["content"][:50] for row in reversed(recent_messages))
 
+    # Read flags before closing first connection
+    flags_row = conn.execute(
+        "SELECT flags_json FROM rooms WHERE room_id = ?", (req.room_id,)
+    ).fetchone()
+    pre_flags = json.loads(flags_row["flags_json"]) if flags_row else []
+
     conn.close()
 
     # Call AI to generate plot
@@ -58,6 +64,7 @@ async def generate_plot(req: GenerateRequest):
         unlocked_plots=req.unlocked_plots,
         history_summary=history_summary,
         user_character_id=req.user_character_id,
+        flags=pre_flags,
     )
     raw = call_deepseek(system_prompt=system_prompt, user_prompt=user_prompt)
 
@@ -81,7 +88,7 @@ async def generate_plot(req: GenerateRequest):
 
     # Read authoritative intimacy from DB (not client-sent req.intimacy)
     room_row = conn.execute(
-        "SELECT intimacy_json, unlocked_plots_json FROM rooms WHERE room_id = ?",
+        "SELECT intimacy_json, unlocked_plots_json, flags_json FROM rooms WHERE room_id = ?",
         (req.room_id,),
     ).fetchone()
     if not room_row:
@@ -90,6 +97,7 @@ async def generate_plot(req: GenerateRequest):
 
     current_intimacy = json.loads(room_row["intimacy_json"])
     current_unlocked = json.loads(room_row["unlocked_plots_json"])
+    current_flags = json.loads(room_row["flags_json"])
 
     # Apply intimacy deltas (clamped to [0, 100])
     for char_id, delta in result.get("intimacy_delta", {}).items():
@@ -101,12 +109,33 @@ async def generate_plot(req: GenerateRequest):
     if next_node_id and next_node_id not in current_unlocked:
         current_unlocked.append(next_node_id)
 
+    # Write flags from last_choice's add_flags
+    if req.last_choice:
+        chosen_node_id = req.last_choice.get("node_id")
+        chosen_option_id = req.last_choice.get("selected")
+        for act in DEMO_ACTS:
+            for node in act.get("nodes", []):
+                if node["node_id"] == chosen_node_id:
+                    # Look in options_by_char first, then fallback to options
+                    options_pool = (
+                        node.get("options_by_char", {}).get(req.user_character_id)
+                        or node.get("options", [])
+                    )
+                    for opt in options_pool:
+                        if opt["id"] == chosen_option_id:
+                            for flag in opt.get("add_flags", []):
+                                if flag not in current_flags:
+                                    current_flags.append(flag)
+                            break
+                    break
+
     # Persist updates
     conn.execute(
-        "UPDATE rooms SET intimacy_json = ?, unlocked_plots_json = ? WHERE room_id = ?",
+        "UPDATE rooms SET intimacy_json = ?, unlocked_plots_json = ?, flags_json = ? WHERE room_id = ?",
         (
             json.dumps(current_intimacy, ensure_ascii=False),
             json.dumps(current_unlocked, ensure_ascii=False),
+            json.dumps(current_flags, ensure_ascii=False),
             req.room_id,
         ),
     )
@@ -171,7 +200,7 @@ async def handle_input(req: InputRequest):
 
     # Load room state
     room_row = conn.execute(
-        "SELECT intimacy_json, unlocked_plots_json, novel_id FROM rooms WHERE room_id = ?",
+        "SELECT intimacy_json, unlocked_plots_json, flags_json, novel_id FROM rooms WHERE room_id = ?",
         (req.room_id,),
     ).fetchone()
     if not room_row:
@@ -180,6 +209,7 @@ async def handle_input(req: InputRequest):
 
     intimacy = json.loads(room_row["intimacy_json"])
     current_unlocked = json.loads(room_row["unlocked_plots_json"])
+    current_flags = json.loads(room_row["flags_json"])
 
     # Find the node prompt text from the novel's acts
     novel_row = conn.execute(
@@ -210,6 +240,7 @@ async def handle_input(req: InputRequest):
         node_prompt=node_prompt,
         intimacy=intimacy,
         history_summary=history_summary,
+        flags=current_flags,
     )
     raw = call_deepseek(system_prompt=system_prompt, user_prompt=user_prompt)
 

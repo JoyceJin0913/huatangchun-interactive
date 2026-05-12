@@ -53,10 +53,13 @@ def build_user_prompt(
     node_prompt: str,
     intimacy: dict,
     history_summary: str,
+    flags: list = [],
 ) -> str:
     intimacy_text = "、".join(f"{k}亲密度{v}" for k, v in intimacy.items())
+    flags_text = "、".join(flags) if flags else "无"
     return f"""当前情境：{node_prompt}
 当前亲密度：{intimacy_text}
+已发生的关键事件（flags）：{flags_text}
 历史摘要：{history_summary if history_summary else '无'}
 
 玩家输入：「{user_input}」

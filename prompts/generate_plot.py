@@ -36,6 +36,7 @@ def build_user_prompt(
     unlocked_plots: list,
     history_summary: str,
     user_character_id: str = "wentang",
+    flags: list = [],
 ) -> str:
     char_info = "\n".join(
         f"- {c['name']}（{c['id']}）：{'、'.join(c['personality'])}" for c in characters
@@ -46,6 +47,7 @@ def build_user_prompt(
         else "这是本幕开始，尚无选择记录"
     )
     intimacy_text = "、".join(f"{k}亲密度{v}" for k, v in intimacy.items())
+    flags_text = "、".join(flags) if flags else "无"
 
     # 注入当前玩家角色的叙事视角
     narrative = CHARACTER_NARRATIVE.get(user_character_id, CHARACTER_NARRATIVE["wentang"])
@@ -63,6 +65,7 @@ def build_user_prompt(
 - {pov_text}
 - {choice_text}
 - 当前亲密度：{intimacy_text}
+- 已发生的关键事件（flags）：{flags_text}
 - 已解锁剧情：{', '.join(unlocked_plots) if unlocked_plots else '无'}
 - 对话历史摘要：{history_summary if history_summary else '无'}
 
