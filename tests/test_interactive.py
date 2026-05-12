@@ -81,3 +81,52 @@ def test_generate_updates_intimacy_in_db():
     intimacy = json.loads(row["intimacy_json"])
     # peiyan should go from 50 + 10 = 60
     assert intimacy["peiyan"] == 60
+
+
+MOCK_INPUT_RESPONSE = json.dumps({
+    "emotion_tag": "温柔",
+    "adjusted_input": "温棠轻声道：「琰儿，你想吃枣花糕吗？」",
+    "character_reply": "裴琰垂眸，良久才低声道：「……娘娘做的枣花糕，很甜。」",
+    "intimacy_delta": {"peiyan": 12},
+    "next_node": {"node_id": "act1_node3", "type": "cutscene"},
+})
+
+
+def test_input_returns_adjusted_and_reply():
+    with patch("routers.interactive.call_deepseek", return_value=MOCK_INPUT_RESPONSE):
+        response = client.post(
+            "/interactive/input",
+            json={
+                "room_id": DEMO_ROOM_ID,
+                "user_character_id": "wentang",
+                "node_id": "act1_node2",
+                "user_input": "琰儿，你想吃枣花糕吗？",
+            },
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert "adjusted_input" in data
+    assert "character_reply" in data
+    assert "emotion_tag" in data
+    assert data["emotion_tag"] in ("温柔", "克制", "试探", "激进", "委屈", "傲慢")
+    assert "intimacy_delta" in data
+
+
+def test_input_saves_to_messages():
+    with patch("routers.interactive.call_deepseek", return_value=MOCK_INPUT_RESPONSE):
+        client.post(
+            "/interactive/input",
+            json={
+                "room_id": DEMO_ROOM_ID,
+                "user_character_id": "wentang",
+                "node_id": "act1_node2",
+                "user_input": "琰儿，你想吃枣花糕吗？",
+            },
+        )
+    conn = get_db()
+    count = conn.execute(
+        "SELECT COUNT(*) as cnt FROM messages WHERE room_id = ? AND role = 'user'",
+        (DEMO_ROOM_ID,),
+    ).fetchone()["cnt"]
+    conn.close()
+    assert count >= 1
