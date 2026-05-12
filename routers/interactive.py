@@ -93,7 +93,8 @@ async def generate_plot(req: GenerateRequest):
         current_intimacy[char_id] = min(100, max(0, current_intimacy.get(char_id, 50) + delta))
 
     # Track newly unlocked plot node
-    next_node_id = result.get("next_node", {}).get("node_id")
+    next_node = result.get("next_node")
+    next_node_id = next_node.get("node_id") if isinstance(next_node, dict) else None
     if next_node_id and next_node_id not in current_unlocked:
         current_unlocked.append(next_node_id)
 
