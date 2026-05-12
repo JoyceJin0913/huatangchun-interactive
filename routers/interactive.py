@@ -12,10 +12,10 @@ router = APIRouter(prefix="/interactive", tags=["interactive"])
 class GenerateRequest(BaseModel):
     room_id: str
     act_id: int
-    characters: list
+    characters: list[str]
     last_choice: Optional[dict] = None
     intimacy: dict
-    unlocked_plots: list = []
+    unlocked_plots: list[str] = []
 
 
 @router.post("/generate")
