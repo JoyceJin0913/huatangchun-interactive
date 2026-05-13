@@ -24,12 +24,18 @@ def build_system_prompt() -> str:
 输出要求：
 1. 严格按 JSON 格式输出，不输出任何 JSON 外的内容
 2. plot_html 为剧情叙述，≤300字，用古言风格，支持 <p> 标签
-3. next_node 的 type 只能是 single_choice、free_input、cutscene 之一
-4. intimacy_delta 只包含本段剧情影响到的角色
-5. system_message 简洁，≤20字"""
+3. next_node 的 node_id 必须与【已指定的下一节点ID】完全一致，不可修改
+4. next_node 的 type 只能是 single_choice、free_input、cutscene 之一
+5. intimacy_delta 只包含本段剧情影响到的角色
+6. system_message 简洁，≤20字"""
 
 def build_user_prompt(
     act_id: int,
+    act_title: str,
+    act_background: str,
+    next_node_id: str,
+    next_node_type: str,
+    next_node_prompt: str,
     characters: list,
     last_choice: Optional[dict],
     intimacy: dict,
@@ -57,9 +63,9 @@ def build_user_prompt(
         f"叙事风格：{narrative['style']}"
     )
 
-    # 注意：next_node 不含 options 字段，single_choice 的选项由调用方从 DEMO_ACTS 静态数据中注入
     return f"""当前状态：
-- 第 {act_id} 幕
+- 第 {act_id} 幕：【{act_title}】
+- 本幕背景：{act_background}
 - 角色列表：
 {char_info}
 - {pov_text}
@@ -69,13 +75,17 @@ def build_user_prompt(
 - 已解锁剧情：{', '.join(unlocked_plots) if unlocked_plots else '无'}
 - 对话历史摘要：{history_summary if history_summary else '无'}
 
-请以【{narrative['pov']}】的视角生成下一段剧情，严格按以下 JSON 输出：
+【已指定的下一节点ID】：{next_node_id}（类型：{next_node_type}）
+下一节点情境提示：{next_node_prompt}
+
+请以【{narrative['pov']}】的视角，生成承接上一选择的过渡剧情，然后引出下一节点的情境。
+严格按以下 JSON 输出，next_node.node_id 必须原样填写为 {next_node_id}：
 {{
   "plot_html": "<p>剧情内容</p>",
   "next_node": {{
-    "node_id": "节点id",
-    "type": "single_choice 或 free_input 或 cutscene",
-    "prompt": "展示给玩家的问题"
+    "node_id": "{next_node_id}",
+    "type": "{next_node_type}",
+    "prompt": "{next_node_prompt}"
   }},
   "intimacy_delta": {{"角色id": 变化值}},
   "system_message": "系统提示（≤20字）"

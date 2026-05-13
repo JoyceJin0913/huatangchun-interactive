@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -10,6 +11,64 @@ from prompts.handle_input import build_system_prompt as input_system_prompt
 from prompts.handle_input import build_user_prompt as input_user_prompt
 
 router = APIRouter(prefix="/interactive", tags=["interactive"])
+
+
+def strip_html(html: str) -> str:
+    """Remove HTML tags and return plain text."""
+    return re.sub(r"<[^>]+>", "", html).strip()
+
+
+def get_act_info(act_id: int) -> dict:
+    """
+    Return act metadata and the first node of the requested act from DEMO_ACTS.
+    Falls back gracefully when act_id is out of range.
+    """
+    # Find exact act
+    for act in DEMO_ACTS:
+        if act.get("act_id") == act_id:
+            nodes = act.get("nodes", [])
+            first_node = nodes[0] if nodes else {}
+            return {
+                "title": act.get("title", f"第{act_id}幕"),
+                "background": strip_html(act.get("content_html", "")),
+                "first_node": first_node,
+            }
+    # Fallback: use last act's last node if act_id exceeds list
+    if DEMO_ACTS:
+        act = DEMO_ACTS[-1]
+        nodes = act.get("nodes", [])
+        last_node = nodes[-1] if nodes else {}
+        return {
+            "title": act.get("title", f"第{act_id}幕"),
+            "background": strip_html(act.get("content_html", "")),
+            "first_node": last_node,
+        }
+    return {"title": f"第{act_id}幕", "background": "", "first_node": {}}
+
+
+def find_next_node_in_acts(current_node_id: str, act_id: int) -> Optional[dict]:
+    """
+    Given the current node_id, find the next node to show the player.
+    Strategy:
+      1. Find the current node in DEMO_ACTS.
+      2. Return the next node in the same act's node list.
+      3. If current node is the last in its act, return the first node of act_id+1.
+      4. If nothing found, return None.
+    """
+    for act in DEMO_ACTS:
+        nodes = act.get("nodes", [])
+        for i, node in enumerate(nodes):
+            if node["node_id"] == current_node_id:
+                if i + 1 < len(nodes):
+                    return nodes[i + 1]
+                # Last node of this act → first node of next act
+                next_act_id = act["act_id"] + 1
+                for next_act in DEMO_ACTS:
+                    if next_act.get("act_id") == next_act_id:
+                        next_nodes = next_act.get("nodes", [])
+                        return next_nodes[0] if next_nodes else None
+                return None
+    return None
 
 
 class GenerateRequest(BaseModel):
@@ -39,12 +98,14 @@ async def generate_plot(req: GenerateRequest):
     all_characters = json.loads(novel_row["characters_json"])
     characters = [c for c in all_characters if c["id"] in req.characters]
 
-    # Build history summary from recent messages
+    # Build plain-text history summary from recent messages (strip HTML)
     recent_messages = conn.execute(
         "SELECT content FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT 5",
         (req.room_id,),
     ).fetchall()
-    history_summary = " | ".join(row["content"][:50] for row in reversed(recent_messages))
+    history_summary = " | ".join(
+        strip_html(row["content"])[:60] for row in reversed(recent_messages)
+    )
 
     # Read flags before closing first connection
     flags_row = conn.execute(
@@ -54,7 +115,7 @@ async def generate_plot(req: GenerateRequest):
 
     conn.close()
 
-    # Enrich last_choice with actual option text for better AI context
+    # ── Enrich last_choice with actual option text ──────────────────────────
     enriched_last_choice = req.last_choice
     if req.last_choice:
         chosen_node_id = req.last_choice.get("node_id")
@@ -75,10 +136,41 @@ async def generate_plot(req: GenerateRequest):
                             break
                     break
 
-    # Call AI to generate plot
+    # ── Determine next node (LOCKED from DEMO_ACTS) ─────────────────────────
+    if req.last_choice and req.last_choice.get("node_id"):
+        locked_node = find_next_node_in_acts(req.last_choice["node_id"], req.act_id)
+    else:
+        # Game start: use first node of act_id
+        act_info = get_act_info(req.act_id)
+        locked_node = act_info["first_node"]
+
+    if not locked_node:
+        # Fallback: first node of current act
+        act_info = get_act_info(req.act_id)
+        locked_node = act_info.get("first_node") or {}
+
+    locked_node_id = locked_node.get("node_id", f"act{req.act_id}_node1")
+    locked_node_type = locked_node.get("type", "single_choice")
+    locked_node_prompt = locked_node.get("prompt", "")
+
+    # ── Act background for the act containing the locked node ───────────────
+    locked_act_id = req.act_id
+    for act in DEMO_ACTS:
+        for n in act.get("nodes", []):
+            if n.get("node_id") == locked_node_id:
+                locked_act_id = act["act_id"]
+                break
+    act_info = get_act_info(locked_act_id)
+
+    # ── Call AI to generate plot ─────────────────────────────────────────────
     system_prompt = build_system_prompt()
     user_prompt = build_user_prompt(
-        act_id=req.act_id,
+        act_id=locked_act_id,
+        act_title=act_info["title"],
+        act_background=act_info["background"],
+        next_node_id=locked_node_id,
+        next_node_type=locked_node_type,
+        next_node_prompt=locked_node_prompt,
         characters=characters,
         last_choice=enriched_last_choice,
         intimacy=req.intimacy,
@@ -94,7 +186,6 @@ async def generate_plot(req: GenerateRequest):
         parts = raw.split("\n", 1)
         if len(parts) > 1:
             raw = parts[1].rsplit("```", 1)[0]
-        # else: malformed fence, leave raw unchanged — json.loads will raise the proper 500 below
 
     try:
         result = json.loads(raw)
@@ -104,10 +195,17 @@ async def generate_plot(req: GenerateRequest):
     if not isinstance(result, dict):
         raise HTTPException(status_code=500, detail="AI 返回结构错误: 期望 JSON 对象")
 
-    # Re-open connection to read authoritative intimacy and write updates
+    # ── Force next_node to use locked values (AI must not override routing) ──
+    if "next_node" not in result or not isinstance(result["next_node"], dict):
+        result["next_node"] = {}
+    result["next_node"]["node_id"] = locked_node_id
+    result["next_node"]["type"] = locked_node_type
+    if not result["next_node"].get("prompt"):
+        result["next_node"]["prompt"] = locked_node_prompt
+
+    # ── Re-open connection to read authoritative intimacy and write updates ──
     conn = get_db()
 
-    # Read authoritative intimacy from DB (not client-sent req.intimacy)
     room_row = conn.execute(
         "SELECT intimacy_json, unlocked_plots_json, flags_json FROM rooms WHERE room_id = ?",
         (req.room_id,),
@@ -125,10 +223,8 @@ async def generate_plot(req: GenerateRequest):
         current_intimacy[char_id] = min(100, max(0, current_intimacy.get(char_id, 50) + delta))
 
     # Track newly unlocked plot node
-    next_node = result.get("next_node")
-    next_node_id = next_node.get("node_id") if isinstance(next_node, dict) else None
-    if next_node_id and next_node_id not in current_unlocked:
-        current_unlocked.append(next_node_id)
+    if locked_node_id and locked_node_id not in current_unlocked:
+        current_unlocked.append(locked_node_id)
 
     # Write flags from last_choice's add_flags
     if req.last_choice:
@@ -137,7 +233,6 @@ async def generate_plot(req: GenerateRequest):
         for act in DEMO_ACTS:
             for node in act.get("nodes", []):
                 if node["node_id"] == chosen_node_id:
-                    # Look in options_by_char first, then fallback to options
                     options_pool = (
                         node.get("options_by_char", {}).get(req.user_character_id)
                         or node.get("options", [])
@@ -160,47 +255,31 @@ async def generate_plot(req: GenerateRequest):
             req.room_id,
         ),
     )
+    # Store plain text in messages (not raw HTML) for cleaner history summaries
     conn.execute(
         "INSERT INTO messages (room_id, role, content, node_id) VALUES (?, ?, ?, ?)",
         (
             req.room_id,
             "assistant",
-            result.get("plot_html", ""),
-            next_node_id,
+            strip_html(result.get("plot_html", "")),
+            locked_node_id,
         ),
     )
     conn.commit()
     conn.close()
 
-    # Inject options for single_choice nodes from DEMO_ACTS static data
-    injected_node = result.get("next_node")
-    if isinstance(injected_node, dict) and injected_node.get("type") == "single_choice":
-        node_id = injected_node.get("node_id")
+    # ── Inject options for single_choice nodes from DEMO_ACTS ───────────────
+    injected_node = result["next_node"]
+    if injected_node.get("type") == "single_choice":
         matched_options = None
-
-        # First try exact node_id match
         for act in DEMO_ACTS:
             for node in act.get("nodes", []):
-                if node["node_id"] == node_id:
-                    # Prefer per-character options if available
+                if node["node_id"] == locked_node_id:
                     options_by_char = node.get("options_by_char", {})
                     matched_options = options_by_char.get(req.user_character_id) or node.get("options", [])
                     break
             if matched_options is not None:
                 break
-
-        # Fallback: match by act_id — use first single_choice node in that act
-        if matched_options is None:
-            for act in DEMO_ACTS:
-                if act.get("act_id") == req.act_id:
-                    for node in act.get("nodes", []):
-                        if node.get("type") == "single_choice":
-                            options_by_char = node.get("options_by_char", {})
-                            matched_options = options_by_char.get(req.user_character_id) or node.get("options", [])
-                            # Also align node_id so front-end tracking is consistent
-                            injected_node["node_id"] = node["node_id"]
-                            break
-                    break
 
         if matched_options:
             injected_node["options"] = matched_options
@@ -232,25 +311,20 @@ async def handle_input(req: InputRequest):
     current_unlocked = json.loads(room_row["unlocked_plots_json"])
     current_flags = json.loads(room_row["flags_json"])
 
-    # Find the node prompt text from the novel's acts
-    novel_row = conn.execute(
-        "SELECT acts_json FROM novels WHERE novel_id = ?",
-        (room_row["novel_id"],),
-    ).fetchone()
-    acts = json.loads(novel_row["acts_json"]) if novel_row else []
+    # Find the node prompt text from DEMO_ACTS (authoritative source)
     node_prompt = ""
-    for act in acts:
+    for act in DEMO_ACTS:
         for node in act.get("nodes", []):
             if node["node_id"] == req.node_id:
                 node_prompt = node.get("prompt", "")
                 break
 
-    # Build history summary from recent messages
+    # Build plain-text history summary from recent messages
     recent = conn.execute(
         "SELECT content FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT 5",
         (req.room_id,),
     ).fetchall()
-    history_summary = " | ".join(row["content"][:50] for row in reversed(recent))
+    history_summary = " | ".join(row["content"][:60] for row in reversed(recent))
 
     conn.close()
 
@@ -281,7 +355,6 @@ async def handle_input(req: InputRequest):
 
     # Apply intimacy deltas from DB-authoritative values
     conn = get_db()
-    # Re-read to get the most up-to-date intimacy
     fresh_row = conn.execute(
         "SELECT intimacy_json, unlocked_plots_json FROM rooms WHERE room_id = ?",
         (req.room_id,),
@@ -301,7 +374,7 @@ async def handle_input(req: InputRequest):
     if next_node_id and next_node_id not in current_unlocked:
         current_unlocked.append(next_node_id)
 
-    # Save user message and AI reply to messages table
+    # Save user message and AI reply (plain text) to messages table
     conn.execute(
         "INSERT INTO messages (room_id, role, character_id, content, node_id) VALUES (?, ?, ?, ?, ?)",
         (req.room_id, "user", req.user_character_id, req.user_input, req.node_id),
