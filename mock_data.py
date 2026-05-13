@@ -8,7 +8,7 @@ DEMO_CHARACTERS = [
         "role": "protagonist",
         "personality": ["温和隐忍", "善良心软", "重亲情"],
         "skills": ["枣花糕", "针线活", "倾听"],
-        "initial_intimacy": 50,  # 主角自身，不计入亲密度追踪
+        "initial_intimacy": 50,
     },
     {
         "id": "peirong",
@@ -47,45 +47,26 @@ DEMO_ACTS = [
                 "type": "single_choice",
                 "trigger": "裴容询问后",
                 "prompt": "裴容放下书卷，沉声道：「朕问你，想不想抚育三皇子琰儿？」",
-                # 兼容旧逻辑的默认选项（温棠视角）
-                "options": [
-                    {
-                        "id": "A",
-                        "text": "欣然应允：「臣妾愿悉心照料琰儿」",
-                        "intimacy_delta": {"peiyan": 15, "peirong": 10},
-                        "add_flags": ["chose_adopt_peiyan"],
-                    },
-                    {
-                        "id": "B",
-                        "text": "犹豫试探：「陛下，琰儿乃皇子，臣妾恐难当此任」",
-                        "intimacy_delta": {"peiyan": 5, "peirong": 5},
-                        "add_flags": ["hesitated_adopt"],
-                    },
-                    {
-                        "id": "C",
-                        "text": "婉言拒绝：「臣妾只想盼着瑜儿回心转意」",
-                        "intimacy_delta": {"peirong": -5, "peiyu": 5},
-                        "add_flags": ["refused_adopt"],
-                    },
-                ],
-                # 按角色区分的选项
                 "options_by_char": {
                     "wentang": [
                         {
                             "id": "A",
                             "text": "欣然应允：「臣妾愿悉心照料琰儿，视若己出」",
+                            "next_node_id": "act1_node2",   # 裴琰会再问一句确认
                             "intimacy_delta": {"peiyan": 15, "peirong": 10},
                             "add_flags": ["chose_adopt_peiyan"],
                         },
                         {
                             "id": "B",
                             "text": "犹豫试探：「陛下，琰儿乃皇子，臣妾恐难当此任……」",
+                            "next_node_id": "act1_node2",   # 裴琰察觉到你的犹豫
                             "intimacy_delta": {"peiyan": 5, "peirong": 5},
                             "add_flags": ["hesitated_adopt"],
                         },
                         {
                             "id": "C",
                             "text": "婉言拒绝：「臣妾只想盼着瑜儿有朝一日回心转意」",
+                            "next_node_id": "act2_node1",   # 直接跳到第2幕，跳过裴琰的追问
                             "intimacy_delta": {"peirong": -5, "peiyu": 5},
                             "add_flags": ["refused_adopt"],
                         },
@@ -94,18 +75,21 @@ DEMO_ACTS = [
                         {
                             "id": "A",
                             "text": "默然观察：我只需看清父皇此举究竟是试探还是安排",
+                            "next_node_id": "act1_node2",
                             "intimacy_delta": {"wentang": 0, "peirong": 5},
                             "add_flags": ["peiyan_observed_silently"],
                         },
                         {
                             "id": "B",
                             "text": "乖巧应声：「儿臣谢父皇，定不叫娘娘为难」",
+                            "next_node_id": "act2_node1",
                             "intimacy_delta": {"wentang": 10, "peirong": 8},
                             "add_flags": ["peiyan_accepted_gracefully"],
                         },
                         {
                             "id": "C",
                             "text": "试探温棠：悄悄退后半步，等着看她是欢喜还是为难",
+                            "next_node_id": "act1_node2",
                             "intimacy_delta": {"wentang": 5, "peirong": 3},
                             "add_flags": ["peiyan_tested_wentang"],
                         },
@@ -118,6 +102,8 @@ DEMO_ACTS = [
                 "trigger": "裴琰独处时",
                 "prompt": "裴琰望着你，轻声问道：「娘娘，您真的愿意留下琰儿吗？」",
                 "options": [],
+                # act1_node2 没有分支，free_input 后统一进入 act2_node1
+                "next_node_id": "act2_node1",
             },
         ],
     },
@@ -131,39 +117,26 @@ DEMO_ACTS = [
                 "type": "single_choice",
                 "trigger": "裴琰入宫后",
                 "prompt": "裴琰站在门口，你想先做什么？",
-                # 默认选项（温棠视角）
-                "options": [
-                    {
-                        "id": "A",
-                        "text": "给裴琰做枣花糕",
-                        "intimacy_delta": {"peiyan": 20},
-                        "add_flags": ["given_snack_to_peiyan"],
-                    },
-                    {
-                        "id": "B",
-                        "text": "为裴琰缝补冬衣",
-                        "intimacy_delta": {"peiyan": 15},
-                        "add_flags": ["sewn_clothes_for_peiyan"],
-                    },
-                ],
-                # 按角色区分的选项
                 "options_by_char": {
                     "wentang": [
                         {
                             "id": "A",
                             "text": "亲手做枣花糕：将热腾腾的糕点摆在他面前",
+                            "next_node_id": "act3_node1",
                             "intimacy_delta": {"peiyan": 20},
                             "add_flags": ["given_snack_to_peiyan"],
                         },
                         {
                             "id": "B",
                             "text": "取针线缝补冬衣：让他知道这里有人在乎他",
+                            "next_node_id": "act3_node1",
                             "intimacy_delta": {"peiyan": 15},
                             "add_flags": ["sewn_clothes_for_peiyan"],
                         },
                         {
                             "id": "C",
                             "text": "问他爱吃什么：先了解他，再慢慢走近",
+                            "next_node_id": "act3_node1",
                             "intimacy_delta": {"peiyan": 10, "peirong": 3},
                             "add_flags": ["asked_peiyan_preference"],
                         },
@@ -172,18 +145,21 @@ DEMO_ACTS = [
                         {
                             "id": "A",
                             "text": "主动搭手帮忙：「我来帮娘娘，娘娘别累着」",
+                            "next_node_id": "act3_node1",
                             "intimacy_delta": {"wentang": 18},
                             "add_flags": ["peiyan_helped_wentang"],
                         },
                         {
                             "id": "B",
                             "text": "安静坐在一旁看她做事，记住她的每一个习惯",
+                            "next_node_id": "act3_node1",
                             "intimacy_delta": {"wentang": 12},
                             "add_flags": ["peiyan_watched_quietly"],
                         },
                         {
                             "id": "C",
                             "text": "故意打翻东西，看她如何应对——是恼还是疼",
+                            "next_node_id": "act3_node1",
                             "intimacy_delta": {"wentang": 8},
                             "add_flags": ["peiyan_tested_wentang_act2"],
                         },

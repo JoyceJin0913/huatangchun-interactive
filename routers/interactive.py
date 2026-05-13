@@ -46,28 +46,61 @@ def get_act_info(act_id: int) -> dict:
     return {"title": f"第{act_id}幕", "background": "", "first_node": {}}
 
 
-def find_next_node_in_acts(current_node_id: str, act_id: int) -> Optional[dict]:
+def find_node_by_id(node_id: str) -> Optional[dict]:
+    """Find a node dict by its node_id across all acts."""
+    for act in DEMO_ACTS:
+        for node in act.get("nodes", []):
+            if node["node_id"] == node_id:
+                return node
+    return None
+
+
+def find_next_node_in_acts(
+    current_node_id: str,
+    act_id: int,
+    chosen_option_id: Optional[str] = None,
+    user_character_id: str = "wentang",
+) -> Optional[dict]:
     """
-    Given the current node_id, find the next node to show the player.
-    Strategy:
-      1. Find the current node in DEMO_ACTS.
-      2. Return the next node in the same act's node list.
-      3. If current node is the last in its act, return the first node of act_id+1.
-      4. If nothing found, return None.
+    Given the current node_id and the option the player chose, find the next node.
+    Strategy (in priority order):
+      1. If the chosen option has a next_node_id, use that (branch routing).
+      2. If the current node itself has a next_node_id, use that (linear routing).
+      3. Fall back to sequential: next node in same act, or first node of next act.
     """
     for act in DEMO_ACTS:
         nodes = act.get("nodes", [])
         for i, node in enumerate(nodes):
-            if node["node_id"] == current_node_id:
-                if i + 1 < len(nodes):
-                    return nodes[i + 1]
-                # Last node of this act → first node of next act
-                next_act_id = act["act_id"] + 1
-                for next_act in DEMO_ACTS:
-                    if next_act.get("act_id") == next_act_id:
-                        next_nodes = next_act.get("nodes", [])
-                        return next_nodes[0] if next_nodes else None
-                return None
+            if node["node_id"] != current_node_id:
+                continue
+
+            # Priority 1: chosen option's next_node_id
+            if chosen_option_id:
+                options_pool = (
+                    node.get("options_by_char", {}).get(user_character_id)
+                    or node.get("options", [])
+                )
+                for opt in options_pool:
+                    if opt["id"] == chosen_option_id:
+                        opt_next = opt.get("next_node_id")
+                        if opt_next:
+                            return find_node_by_id(opt_next)
+                        break
+
+            # Priority 2: node-level next_node_id (e.g. free_input nodes)
+            node_next = node.get("next_node_id")
+            if node_next:
+                return find_node_by_id(node_next)
+
+            # Priority 3: sequential fallback
+            if i + 1 < len(nodes):
+                return nodes[i + 1]
+            next_act_id = act["act_id"] + 1
+            for next_act in DEMO_ACTS:
+                if next_act.get("act_id") == next_act_id:
+                    next_nodes = next_act.get("nodes", [])
+                    return next_nodes[0] if next_nodes else None
+            return None
     return None
 
 
@@ -138,7 +171,12 @@ async def generate_plot(req: GenerateRequest):
 
     # ── Determine next node (LOCKED from DEMO_ACTS) ─────────────────────────
     if req.last_choice and req.last_choice.get("node_id"):
-        locked_node = find_next_node_in_acts(req.last_choice["node_id"], req.act_id)
+        locked_node = find_next_node_in_acts(
+            current_node_id=req.last_choice["node_id"],
+            act_id=req.act_id,
+            chosen_option_id=req.last_choice.get("selected"),
+            user_character_id=req.user_character_id,
+        )
     else:
         # Game start: use first node of act_id
         act_info = get_act_info(req.act_id)
