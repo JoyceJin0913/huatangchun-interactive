@@ -42,7 +42,7 @@ def build_user_prompt(
         f"- {c['name']}（{c['id']}）：{'、'.join(c['personality'])}" for c in characters
     )
     choice_text = (
-        f"玩家上一个选择：节点 {last_choice['node_id']}，选择了 {last_choice['selected']}"
+        f"玩家上一个选择：节点 {last_choice['node_id']}，选择了「{last_choice.get('text') or last_choice['selected']}」"
         if last_choice
         else "这是本幕开始，尚无选择记录"
     )

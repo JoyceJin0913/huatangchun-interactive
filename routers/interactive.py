@@ -54,12 +54,33 @@ async def generate_plot(req: GenerateRequest):
 
     conn.close()
 
+    # Enrich last_choice with actual option text for better AI context
+    enriched_last_choice = req.last_choice
+    if req.last_choice:
+        chosen_node_id = req.last_choice.get("node_id")
+        chosen_option_id = req.last_choice.get("selected")
+        for act in DEMO_ACTS:
+            for node in act.get("nodes", []):
+                if node["node_id"] == chosen_node_id:
+                    options_pool = (
+                        node.get("options_by_char", {}).get(req.user_character_id)
+                        or node.get("options", [])
+                    )
+                    for opt in options_pool:
+                        if opt["id"] == chosen_option_id:
+                            enriched_last_choice = {
+                                **req.last_choice,
+                                "text": opt.get("text", ""),
+                            }
+                            break
+                    break
+
     # Call AI to generate plot
     system_prompt = build_system_prompt()
     user_prompt = build_user_prompt(
         act_id=req.act_id,
         characters=characters,
-        last_choice=req.last_choice,
+        last_choice=enriched_last_choice,
         intimacy=req.intimacy,
         unlocked_plots=req.unlocked_plots,
         history_summary=history_summary,
